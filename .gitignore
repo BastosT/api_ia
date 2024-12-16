@@ -1,0 +1,40 @@
+# Environnement virtuel
+api_ia_env/
+
+# Fichiers Python compilés
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Fichiers de configuration IDE
+.vscode/
+.idea/
+
+# Fichiers de log
+*.log
+
+# Fichiers de cache
+*.sqlite
+*.db
+
+# Fichiers de tests
+*.coverage
+*.tox
+*.nox
+*.coverage.*
+*.hypothesis/
+
+# Fichiers de Docker
+*.dockerignore
+
+# Fichiers de dépendances
+*.tar.gz
+*.whl
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Fichiers spécifiques à la plateforme
+.DS_Store  # macOS
+Thumbs.db  # Windows
