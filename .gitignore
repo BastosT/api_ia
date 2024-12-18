@@ -38,3 +38,5 @@ __pycache__/
 # Fichiers spécifiques à la plateforme
 .DS_Store  # macOS
 Thumbs.db  # Windows
+
+data/
