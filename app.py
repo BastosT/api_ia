@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 from flask import Flask, request, jsonify
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.neighbors import KNeighborsRegressor
+
 
 app = Flask(__name__)
 
@@ -52,6 +55,63 @@ def predict():
     
     # Retourner la prédiction sous forme de JSON
     return jsonify({"prediction": prediction.tolist()})
+
+
+
+# Nouvelle route pour tester le modèle k-Nearest Neighbors (k-NN)
+@app.route('/predict_knn', methods=['GET'])
+def predict_knn():
+    try:
+        # Récupérer les hyperparamètres du modèle k-NN depuis les paramètres de la requête GET
+        n_neighbors = int(request.args.get('n_neighbors', 5))
+
+        # Charger les données
+        df = pd.read_csv("data/HomeC.csv", usecols=['temperature', 'time'])
+
+        # Nettoyer les données en forçant les valeurs à être numériques (remplacer les non-numeriques par NaN)
+        df['time'] = pd.to_numeric(df['time'], errors='coerce')  # Convertir en numérique, en forçant les erreurs à NaN
+
+        # Retirer les lignes contenant des valeurs NaN dans 'time' ou 'temperature'
+        df.dropna(subset=['time', 'temperature'], inplace=True)
+
+        # Convertir la colonne 'time' en datetime
+        df['time'] = pd.to_datetime(df['time'], unit='s', errors='coerce')  # Convertir les timestamps UNIX en datetime
+
+        # Convertir la colonne 'time' en nombre de secondes depuis l'époque pour l'utilisation avec le modèle
+        df['time'] = df['time'].astype('int64') / 10**9  # Conversion en secondes depuis l'époque (format float)
+
+        # Calculer la différence de température entre les valeurs successives
+        df['temp_diff'] = df['temperature'].diff().abs()
+
+        # Filtrer les données pour ne garder que celles où la différence de température est significative
+        df_filtered = df[df['temp_diff'] > 0.1]  # Seuil de 0.1°C pour la variation
+
+        # Normaliser les données de température
+        scaler_temp = MinMaxScaler(feature_range=(0, 1))
+        df_filtered['temperature_scaled'] = scaler_temp.fit_transform(df_filtered['temperature'].values.reshape(-1, 1))
+
+        # Séparer les données en entrées (X) et sorties (y)
+        X = df_filtered['time'].values.reshape(-1, 1)  # Utiliser 'time' comme variable d'entrée
+        y = df_filtered['temperature_scaled'].values  # Utiliser 'temperature_scaled' comme variable de sortie normalisée
+
+        # Créer et entraîner le modèle k-NN
+        model = KNeighborsRegressor(n_neighbors=n_neighbors)
+        model.fit(X, y)
+
+        # Prédire la température pour la prochaine valeur de 'time'
+        last_time = df_filtered['time'].values[-1]
+        next_time = last_time + (df_filtered['time'].values[1] - df_filtered['time'].values[0])  # Calculer le temps suivant
+        prediction_scaled = model.predict(np.array([[next_time]]))
+        
+        # Dénormaliser la prédiction
+        prediction = scaler_temp.inverse_transform(prediction_scaled.reshape(-1, 1))
+
+        # Retourner la prédiction sous forme de JSON
+        return jsonify({"prediction": prediction.tolist()})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(port=5001)
