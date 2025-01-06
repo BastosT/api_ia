@@ -57,7 +57,6 @@ def predict():
     return jsonify({"prediction": prediction.tolist()})
 
 
-
 # Nouvelle route pour tester le modèle k-Nearest Neighbors (k-NN)
 @app.route('/predict_knn', methods=['GET'])
 def predict_knn():
@@ -111,6 +110,60 @@ def predict_knn():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/predict_future', methods=['GET'])
+def predict_future():
+    try:
+        # Charger les données
+        df = pd.read_csv("data/HomeC.csv", usecols=['temperature', 'time'])
+
+        # Nettoyer les données
+        df['time'] = pd.to_numeric(df['time'], errors='coerce')
+        df.dropna(subset=['time', 'temperature'], inplace=True)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df['time'] = df['time'].astype('int64') / 10**9  # Conversion en secondes
+
+        # Normaliser les données de température
+        scaler_temp = MinMaxScaler()
+        df['temperature_scaled'] = scaler_temp.fit_transform(df['temperature'].values.reshape(-1, 1))
+
+        # Récupérer les paramètres de prédiction depuis les requêtes GET
+        lookback = int(request.args.get('lookback', 60))  # Historique utilisé pour la prédiction (en secondes)
+        horizon = int(request.args.get('horizon', 10))  # Horizon de prédiction (en secondes)
+
+        # Préparer les données pour la série temporelle
+        X, y = [], []
+        for i in range(len(df) - lookback - horizon):
+            X.append(df['temperature_scaled'].values[i:i + lookback])
+            y.append(df['temperature_scaled'].values[i + lookback:i + lookback + horizon])
+
+        X = np.array(X)
+        y = np.array(y)
+
+        # Créer et entraîner un modèle de régression linéaire
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # Faire une prédiction pour les prochaines températures
+        last_window = df['temperature_scaled'].values[-lookback:]
+        prediction_scaled = model.predict(last_window.reshape(1, -1))
+
+        # Dénormaliser les prédictions
+        prediction = scaler_temp.inverse_transform(prediction_scaled.reshape(-1, 1))
+
+        # Retourner la prédiction sous forme de JSON
+        return jsonify({
+            "predictions": prediction.flatten().tolist(),
+            "horizon": horizon,
+            "unit": "seconds"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+    
 
 
 if __name__ == '__main__':
