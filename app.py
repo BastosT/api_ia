@@ -112,55 +112,51 @@ def predict_knn():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/predict_future', methods=['GET'])
-def predict_future():
+@app.route('/predict_horizon', methods=['GET'])
+def predict_horizon():
     try:
+        # Horizon de prédiction récupéré depuis les paramètres de la requête (par défaut 10 secondes)
+        horizon = int(request.args.get('horizon', 10))
+
         # Charger les données
         df = pd.read_csv("data/HomeC.csv", usecols=['temperature', 'time'])
 
-        # Nettoyer les données
+        # Préparer les données comme dans les exemples précédents
         df['time'] = pd.to_numeric(df['time'], errors='coerce')
         df.dropna(subset=['time', 'temperature'], inplace=True)
-        df['time'] = pd.to_datetime(df['time'], unit='s')
-        df['time'] = df['time'].astype('int64') / 10**9  # Conversion en secondes
+        df['time'] = pd.to_datetime(df['time'], unit='s', errors='coerce')
+        df['time'] = df['time'].astype('int64') / 10**9
 
-        # Normaliser les données de température
-        scaler_temp = MinMaxScaler()
-        df['temperature_scaled'] = scaler_temp.fit_transform(df['temperature'].values.reshape(-1, 1))
+        # Normaliser la température
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        df['temperature_scaled'] = scaler.fit_transform(df['temperature'].values.reshape(-1, 1))
 
-        # Récupérer les paramètres de prédiction depuis les requêtes GET
-        lookback = int(request.args.get('lookback', 60))  # Historique utilisé pour la prédiction (en secondes)
-        horizon = int(request.args.get('horizon', 10))  # Horizon de prédiction (en secondes)
+        # Séparer les entrées et sorties
+        X = df['time'].values.reshape(-1, 1)
+        y = df['temperature_scaled'].values
 
-        # Préparer les données pour la série temporelle
-        X, y = [], []
-        for i in range(len(df) - lookback - horizon):
-            X.append(df['temperature_scaled'].values[i:i + lookback])
-            y.append(df['temperature_scaled'].values[i + lookback:i + lookback + horizon])
-
-        X = np.array(X)
-        y = np.array(y)
-
-        # Créer et entraîner un modèle de régression linéaire
+        # Entraîner un modèle de régression linéaire
         model = LinearRegression()
         model.fit(X, y)
 
-        # Faire une prédiction pour les prochaines températures
-        last_window = df['temperature_scaled'].values[-lookback:]
-        prediction_scaled = model.predict(last_window.reshape(1, -1))
+        # Prédire pour les prochains horizons
+        last_time = df['time'].values[-1]
+        time_steps = [last_time + (i * 10) for i in range(1, horizon + 1)]  # Prévisions toutes les 10 secondes
+        predictions_scaled = model.predict(np.array(time_steps).reshape(-1, 1))
 
         # Dénormaliser les prédictions
-        prediction = scaler_temp.inverse_transform(prediction_scaled.reshape(-1, 1))
+        predictions = scaler.inverse_transform(predictions_scaled.reshape(-1, 1))
 
-        # Retourner la prédiction sous forme de JSON
+        # Retourner les prédictions sous forme de JSON
         return jsonify({
-            "predictions": prediction.flatten().tolist(),
             "horizon": horizon,
+            "predictions": predictions.flatten().tolist(),
             "unit": "seconds"
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
     
