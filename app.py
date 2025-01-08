@@ -5,9 +5,12 @@ from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.neighbors import KNeighborsRegressor
-
+from flask_cors import CORS
 
 app = Flask(__name__)
+
+# Configurer CORS pour toutes les routes
+CORS(app)
 
 @app.route('/')
 def home():
