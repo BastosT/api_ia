@@ -1,11 +1,14 @@
 import pandas as pd
 import numpy as np
+import requests
 from flask import Flask, request, jsonify
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.neighbors import KNeighborsRegressor
 from flask_cors import CORS
+
+
 
 app = Flask(__name__)
 
@@ -118,46 +121,63 @@ def predict_knn():
 @app.route('/predict_horizon', methods=['GET'])
 def predict_horizon():
     try:
-        # Horizon de prédiction récupéré depuis les paramètres de la requête (par défaut 10 secondes)
+        # Horizon de prédiction récupéré depuis les paramètres de la requête (par défaut 10)
         horizon = int(request.args.get('horizon', 10))
-
-        # Charger les données
-        df = pd.read_csv("data/HomeC.csv", usecols=['temperature', 'time'])
-
-        # Préparer les données comme dans les exemples précédents
-        df['time'] = pd.to_numeric(df['time'], errors='coerce')
-        df.dropna(subset=['time', 'temperature'], inplace=True)
-        df['time'] = pd.to_datetime(df['time'], unit='s', errors='coerce')
-        df['time'] = df['time'].astype('int64') / 10**9
-
-        # Normaliser la température
+        
+        # Récupérer les données de température depuis votre première API
+        response = requests.get('http://10.103.101.30:5000/temperature_data')
+        if not response.ok:
+            raise Exception("Erreur lors de la récupération des données de température")
+            
+        data = response.json()
+        
+        # Extraire les données de tous les capteurs
+        temp_data = data['all_data']
+        
+        # Convertir en DataFrame
+        df = pd.DataFrame(temp_data)
+        
+        # Trier par temps croissant
+        df = df.sort_values('time')
+        
+        # Préparer les données
         scaler = MinMaxScaler(feature_range=(0, 1))
         df['temperature_scaled'] = scaler.fit_transform(df['temperature'].values.reshape(-1, 1))
-
+        
         # Séparer les entrées et sorties
         X = df['time'].values.reshape(-1, 1)
         y = df['temperature_scaled'].values
-
-        # Entraîner un modèle de régression linéaire
+        
+        # Entraîner le modèle de régression linéaire
         model = LinearRegression()
         model.fit(X, y)
-
+        
         # Prédire pour les prochains horizons
         last_time = df['time'].values[-1]
-        time_steps = [last_time + (i * 10) for i in range(1, horizon + 1)]  # Prévisions toutes les 10 secondes
+        time_steps = [last_time + (i * 60) for i in range(1, horizon + 1)]  # Prédictions toutes les minutes
         predictions_scaled = model.predict(np.array(time_steps).reshape(-1, 1))
-
+        
         # Dénormaliser les prédictions
         predictions = scaler.inverse_transform(predictions_scaled.reshape(-1, 1))
-
-        # Retourner les prédictions sous forme de JSON
-        return jsonify({
-            "horizon": horizon,
-            "predictions": predictions.flatten().tolist(),
-            "unit": "seconds"
-        })
-
+        
+        # Préparer la réponse
+        response_data = {
+            "current_temperature": float(df['temperature'].iloc[-1]),
+            "last_measurement_time": int(last_time),
+            "predictions": [
+                {
+                    "time": int(time_steps[i]),
+                    "temperature": float(predictions[i][0])
+                }
+                for i in range(len(predictions))
+            ],
+            "horizon_minutes": horizon
+        }
+        
+        return jsonify(response_data)
+        
     except Exception as e:
+        print(f"Erreur détaillée: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
