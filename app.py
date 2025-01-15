@@ -19,49 +19,6 @@ CORS(app)
 def home():
     return jsonify({"message": "Bienvenue sur mon API Flask"})
 
-@app.route('/predictkaggle', methods=['GET'])
-def predict():
-    # Charger les données (vous pouvez remplacer ce chemin par celui de votre propre fichier CSV)
-    df = pd.read_csv("data/HomeC.csv", usecols=['temperature', 'time'])
-
-    # Vérifier les premières lignes du DataFrame
-    print(df.head())
-
-    # Nettoyer les données en forçant les valeurs à être numériques (remplacer les non-numeriques par NaN)
-    df['time'] = pd.to_numeric(df['time'], errors='coerce')  # Convertir en numérique, en forçant les erreurs à NaN
-
-    # Retirer les lignes contenant des valeurs NaN dans 'time' ou 'temperature'
-    df.dropna(subset=['time', 'temperature'], inplace=True)
-
-    # Convertir la colonne 'time' en datetime
-    df['time'] = pd.to_datetime(df['time'], unit='s', errors='coerce')  # Convertir les timestamps UNIX en datetime
-
-    # Vérifier les premières lignes après la conversion
-    print(df.head())
-
-    # Convertir la colonne 'time' en nombre de secondes depuis l'époque pour l'utilisation avec le modèle
-    df['time'] = df['time'].astype('int64') / 10**9  # Conversion en secondes depuis l'époque (format float)
-
-    # Normaliser les données de température
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    temps_scaled = scaler.fit_transform(df['temperature'].values.reshape(-1, 1))
-
-    # Séparer les données en entrées (X) et sorties (y)
-    X = df['time'].values.reshape(-1, 1)  # Utiliser 'time' comme variable d'entrée
-    y = df['temperature'].values
-
-    # Créer et entraîner le modèle de régression linéaire
-    model = LinearRegression()
-    model.fit(X, y)
-
-    # Prédire la température pour la prochaine valeur de 'time'
-    last_time = df['time'].values[-1]
-    next_time = last_time + (df['time'].values[1] - df['time'].values[0])  # Calculer le temps suivant
-    prediction = model.predict(np.array([[next_time]]))
-    
-    # Retourner la prédiction sous forme de JSON
-    return jsonify({"prediction": prediction.tolist()})
-
 
 # Nouvelle route pour tester le modèle k-Nearest Neighbors (k-NN)
 @app.route('/predict_knn', methods=['GET'])
@@ -124,18 +81,26 @@ def predict_horizon():
         # Horizon de prédiction récupéré depuis les paramètres de la requête (par défaut 10)
         horizon = int(request.args.get('horizon', 10))
         
-        # Récupérer les données de température depuis votre première API
+        # Récupérer les données depuis votre première API
         response = requests.get('http://10.103.101.30:5000/temperature_data')
         if not response.ok:
             raise Exception("Erreur lors de la récupération des données de température")
-            
+        
         data = response.json()
         
-        # Extraire les données de tous les capteurs
-        temp_data = data['all_data']
+        # Extraire les données de "data_by_sensor"
+        sensor_id = "9_in_1_multi_sensor_air_temperature"  # Identifiant spécifique du capteur
+        if sensor_id not in data['data_by_sensor']:
+            raise Exception(f"Aucune donnée trouvée pour le capteur : {sensor_id}")
+        
+        sensor_data = data['data_by_sensor'][sensor_id]
         
         # Convertir en DataFrame
-        df = pd.DataFrame(temp_data)
+        df = pd.DataFrame(sensor_data)
+        
+        # Vérification des colonnes nécessaires
+        if 'time' not in df.columns or 'temperature' not in df.columns:
+            raise Exception("Les données du capteur ne contiennent pas les colonnes 'time' et 'temperature'")
         
         # Trier par temps croissant
         df = df.sort_values('time')
@@ -179,6 +144,7 @@ def predict_horizon():
     except Exception as e:
         print(f"Erreur détaillée: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 
 
