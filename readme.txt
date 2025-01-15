@@ -1,5 +1,3 @@
-Cette application utilise des modèles d'apprentissage automatique pour prédire les futures valeurs de température basées sur les données historiques.
-
 # IoT Temperature Predictor
 
 ## 📝 Description
